@@ -4,6 +4,7 @@ from django.forms import BooleanField, MultiValueField, ModelForm, CharField, In
 from django.db.utils import ProgrammingError
 from django.forms import formsets
 from django.forms.formsets import BaseFormSet
+from django.forms.fields import BoundField
 from django.forms.models import BaseInlineFormSet, BaseModelFormSet
 from django.forms.widgets import MultiWidget, NumberInput, HiddenInput, DateInput
 from django.utils.translation import ugettext_lazy as _
@@ -98,6 +99,9 @@ class AbstractWizardModelForm(ModelForm):
     """
     #: Parameter used to indicate whether a field is hidden when it is rendered in HTML.
     hide_param = 'hide_in_html'
+
+    #: CSS class used to style required fields and their corresponding labels.
+    required_css_class = 'required'
 
     #: List of fields to show when they are rendered in HTML.
     fields_to_show = []
@@ -609,6 +613,34 @@ class RelationshipWidget(MultiWidget):
         return self.split_field_value_into_list(value=value)
 
 
+class RequiredBoundField(BoundField):
+    """ A wrapper around Django's BoundField class that styles corresponding labels as if the bound field was required.
+
+    Used in the inheritable.forms.RelationshipField class.
+
+    See https://docs.djangoproject.com/en/3.2/ref/forms/api/#django.forms.BoundField
+
+    """
+    def label_tag(self, contents=None, attrs=None, label_suffix=None):
+        """ Retrieves the HTML to represent the label corresponding to the field.
+
+        Adds a CSS class to ensure that the label is styled as if the bound field is required.
+
+        :param contents: Text represented in label.
+        :param attrs: Dictionary of attributes that define the label.
+        :param label_suffix: Text placed after the label. Default is a colon.
+        :return: HTML representing label for field.
+        """
+        class_key = 'class'
+        if not attrs:
+            attrs = {}
+        if class_key not in attrs:
+            attrs[class_key] = AbstractWizardModelForm.required_css_class
+        else:
+            attrs[class_key] += ' ' + AbstractWizardModelForm.required_css_class
+        return super().label_tag(contents=contents, attrs=attrs, label_suffix=label_suffix)
+
+
 class RelationshipField(MultiValueField):
     """ A collection of fields that represents a relationship.
 
@@ -624,6 +656,10 @@ class RelationshipField(MultiValueField):
         :param args:
         :param kwargs:
         """
+        # overwrite required attribute, and replace it with custom validation and styling of field label as if required
+        required_key = 'required'
+        if required_key in kwargs:
+            kwargs[required_key] = False
         # store previous fields parameter, because we will overwrite it
         self._prev_fields = fields
         fields = (
@@ -665,3 +701,42 @@ class RelationshipField(MultiValueField):
         # subject or object missing
         if not (decompressed[relationship_widget.subject_index] or decompressed[relationship_widget.object_index]):
             raise ValidationError(_('Other part of relationship is missing'))
+
+    def get_bound_field(self, form, field_name):
+        """ Uses a wrapper class for the BoundField so that the label corresponding to the field is always styled
+        as required.
+
+        Derived from the get_bound_field(...) method in the Field class in django/forms/fields.py.
+
+        :param form: Form containing bound field.
+        :param field_name: Name of field.
+        :return: Wrapped bound field instance.
+        """
+        return RequiredBoundField(form, self, field_name)
+
+
+class AsyncSearchCharField(CharField):
+    """ Used for fields that support asynchronous requests to the server to retrieve values that may match the user's
+    input.
+
+    An example includes field that supports person searches when linking persons to incidents in the changing app form.
+
+    """
+    def validate(self, value):
+        """ Suppresses the required validation on the field, since it always has a corresponding hidden field on which
+        required validation will be performed. This hidden field will store the ID of the record that is selected
+        through the asynchronous search.
+
+        (1) Allows AsyncSearchCharField(..., required=True, ...) so that its input and label can be rendered with
+        appropriate visual queues to indicate that they are required, e.g. using default Django Admin styling and
+        required_css_class = 'required' on the containing form; and
+
+        (2) Avoids duplicate error message "This field is required." if the field is left empty.
+
+        :param value: Value stored in the field. Ignored.
+        :return: Nothing.
+        """
+        #: Copied from the validate(...) method in the Field class in django/forms/fields.py, and then commented out.
+        #         if value in self.empty_values and self.required:
+        #             raise ValidationError(self.error_messages['required'], code='required')
+        pass
