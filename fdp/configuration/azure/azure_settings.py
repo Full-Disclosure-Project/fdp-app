@@ -185,7 +185,7 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # external authentication such as through Azure Active Directory is supported
 if EXT_AUTH == AAD_EXT_AUTH:
-    # Django Social Auth: https://python-social-auth-docs.readthedocs.io/en/latest/configuration/django.html
+    # Django Social Auth: https://python-social-auth.readthedocs.io/en/latest/configuration/django.html
     # Azure Client ID
     SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY = get_from_azure_key_vault(
         secret_name=ENV_VAR_FOR_FDP_SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY
@@ -233,7 +233,7 @@ if EXT_AUTH == AAD_EXT_AUTH:
         # See: https://python-social-auth.readthedocs.io/en/latest/backends/azuread.html
         # Ensure that the Django default authentication backend 'django.contrib.auth.backends.ModelBackend' is before
         AUTHENTICATION_BACKENDS.append(CONST_AZURE_AUTH_BACKEND)
-        # Django Social Auth: https://python-social-auth-docs.readthedocs.io/en/latest/configuration/django.html
+        # Django Social Auth: https://python-social-auth.readthedocs.io/en/latest/configuration/django.html
         # Enable JSONB field to store extracted extra data in PostgreSQL
         SOCIAL_AUTH_POSTGRES_JSONFIELD = True
         # Custom namespace for URL entries
@@ -256,7 +256,10 @@ if EXT_AUTH == AAD_EXT_AUTH:
             'social_core.pipeline.social_auth.social_user',
             # Make up a username for this person, appends a random string at the end if
             # there's any collision.
-            'social_core.pipeline.user.get_username',
+            # Disabled since it is replaced by a customized method that enforces case insensitivity
+            # during username comparisons.
+            # 'social_core.pipeline.user.get_username',
+            'fdp.pipeline.get_username',
             # Send a validation email to the user to verify its email address.
             # Disabled by default.
             # 'social_core.pipeline.mail.mail_validation',
@@ -290,9 +293,12 @@ if EXT_AUTH == AAD_EXT_AUTH:
         SOCIAL_AUTH_REDIRECT_IS_HTTPS = True
         # A list of domain names to be white-listed. Any user with an email address on any of the allowed domains will
         # login successfully, otherwise AuthForbidden is raised.
-        SOCIAL_AUTH_OAUTH2_WHITELISTED_DOMAINS = [
-            get_from_environment_var(environment_var='FDP_SOCIAL_AUTH_OAUTH2_WHITELISTED_DOMAINS', raise_exception=True)
-        ]
+        _whitelisted_domains_str = get_from_environment_var(
+            environment_var='FDP_SOCIAL_AUTH_OAUTH2_WHITELISTED_DOMAINS',
+            raise_exception=True
+        )
+        _whitelisted_domains_list = [] if not _whitelisted_domains_str else str(_whitelisted_domains_str).split(',')
+        SOCIAL_AUTH_OAUTH2_WHITELISTED_DOMAINS = [str(d).strip() for d in _whitelisted_domains_list]
         # When disconnecting an account, it is recommended to trigger a token revoke action in the authentication
         # provider,  that way we inform it that the token won’t be used anymore and can be disposed. By default the
         # action is not triggered because it’s not a common option on every provider, and tokens should be disposed
