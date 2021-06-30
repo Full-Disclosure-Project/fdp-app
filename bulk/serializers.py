@@ -15,7 +15,7 @@ from sourcing.models import Content, ContentIdentifier, ContentCase, ContentPers
     ContentPersonPenalty, Attachment
 from supporting.models import County, GroupingRelationshipType, PersonIdentifierType, Trait, Title, IncidentTag, \
     Location, EncounterReason, State, ContentIdentifierType, ContentCaseOutcome, AllegationOutcome, Allegation, \
-    ContentType, PersonGroupingType, LeaveStatus
+    ContentType, PersonGroupingType, LeaveStatus, AttachmentType
 from rest_framework.serializers import ModelSerializer, CharField, EmailField
 from rest_framework.fields import empty
 from reversion.revisions import create_revision
@@ -260,6 +260,96 @@ class FdpModelSerializer(ModelSerializer):
         return ''.join(filter(str.isdigit, str(unformatted_phone_number)))
 
     @staticmethod
+    def __is_whitelisted_url(url):
+        """ Checks whether the starting portion of the URL has been whitelisted.
+
+        :param url: Url to check.
+        :return: True if starting portion of URL has been whitelisted, false otherwise.
+        """
+        # convert to lowercase and remove superfluous whitespace
+        url_to_verify = url.strip().lower()
+        # list of whitelisted URLs
+        whitelisted_urls = AbstractConfiguration.whitelisted_django_data_wizard_urls()
+        # cycle through whitelisted URLs
+        for whitelisted_url in whitelisted_urls:
+            if url_to_verify.startswith(whitelisted_url.strip().lower()):
+                return True
+        return False
+
+    @staticmethod
+    def __is_local_access(netloc):
+        """ Checks whether the netloc component retrieve by Python's parse.urlparse() method is attempting local access.
+
+        :param netloc: Netloc component to check.
+        :return: True if netloc component is attempting local access, false otherwise.
+        """
+        # convert to lowercase and remove superfluous whitespace
+        netloc_to_verify = netloc.strip().lower()
+        # cycle through all variations of local access that are not already covered in __is_private_ip() method
+        for prefix in ['localhost']:
+            if netloc_to_verify.startswith(prefix):
+                return True
+        return False
+
+    @staticmethod
+    def __is_private_ip(ip_address):
+        """ Checks whether an IP address is private.
+
+        See: https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html
+
+        :param ip_address: IP address to check.
+        :return: True if IP address is private, false otherwise.
+        """
+        is_private = False
+        # Build the list of IP prefix for V4 and V6 addresses
+        ip_prefix = []
+        # Add prefix for loopback addresses
+        ip_prefix.append("127.")
+        ip_prefix.append("0.")
+        # Add IP V4 prefix for private addresses
+        # See https://en.wikipedia.org/wiki/Private_network
+        ip_prefix.append("10.")
+        ip_prefix.append("172.16.")
+        ip_prefix.append("172.17.")
+        ip_prefix.append("172.18.")
+        ip_prefix.append("172.19.")
+        ip_prefix.append("172.20.")
+        ip_prefix.append("172.21.")
+        ip_prefix.append("172.22.")
+        ip_prefix.append("172.23.")
+        ip_prefix.append("172.24.")
+        ip_prefix.append("172.25.")
+        ip_prefix.append("172.26.")
+        ip_prefix.append("172.27.")
+        ip_prefix.append("172.28.")
+        ip_prefix.append("172.29.")
+        ip_prefix.append("172.30.")
+        ip_prefix.append("172.31.")
+        ip_prefix.append("192.168.")
+        ip_prefix.append("169.254.")
+        # Add IP V6 prefix for private addresses
+        # See https://en.wikipedia.org/wiki/Unique_local_address
+        # See https://en.wikipedia.org/wiki/Private_network
+        # See https://simpledns.com/private-ipv6
+        ip_prefix.append("fc")
+        ip_prefix.append("fd")
+        ip_prefix.append("fe")
+        ip_prefix.append("ff")
+        ip_prefix.append("::1")
+        # Verify the provided IP address
+        # Remove whitespace characters from the beginning/end of the string
+        # and convert it to lower case
+        # Lower case is for preventing any IPV6 case bypass using mixed case
+        # depending on the source used to get the IP address
+        ip_to_verify = ip_address.strip().lower()
+        # Perform the check against the list of prefix
+        for prefix in ip_prefix:
+            if ip_to_verify.startswith(prefix):
+                is_private = True
+                break
+        return is_private
+
+    @staticmethod
     def _get_links_from_string(str_with_links):
         """ Retrieves list of links from a string.
 
@@ -334,6 +424,15 @@ class FdpModelSerializer(ModelSerializer):
         for i, download_link in enumerate(links, start=0):
             # parse the download link
             parsed_url = urlparse(download_link)
+            # check for private ip address
+            if cls.__is_private_ip(ip_address=parsed_url.netloc):
+                raise ValidationError(_('Private IP addresses are not allowed.'))
+            # check for access to local interface
+            if cls.__is_local_access(netloc=parsed_url.netloc):
+                raise ValidationError(_('Local access is not allowed'))
+            # check if in the whitelist
+            if not cls.__is_whitelisted_url(url=f'{parsed_url.scheme}://{parsed_url.netloc}/{parsed_url.path}'):
+                raise ValidationError(_('URL is not whitelisted, see markdown file for settings documentation'))
             # name of file in download link
             filename = path_basename(parsed_url.path)
             # create an instance of a dummy file, so that the default validator can be used (e.g. to validate its file
@@ -923,6 +1022,49 @@ class AbstractPersonLinkModelSerializer(FdpModelSerializer):
         return super(AbstractPersonLinkModelSerializer, self).is_valid(raise_exception=raise_exception)
 
 
+class AbstractContentLinkModelSerializer(FdpModelSerializer):
+    """ Abstract serializer from which all model serializers inherit for models that include a foreign key to the
+    content model.
+
+    Examples include the Content Identifier Air Table serializer and the Content Person Air Table serializer.
+
+    Attributes:
+        :content (str): Content matched by external content ID.
+    """
+    content = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Content - match by external content ID')
+    )
+
+    #: Fields that should be excluded from the list of mappable target serializer fields.
+    excluded_fields = FdpModelSerializer.excluded_fields
+
+    def __validate_content_foreign_key(self):
+        """ Validates the value of the content foreign key field through its external ID that provides an indirect link
+        to the instance through the Bulk Import table.
+
+        :return: Nothing.
+        """
+        self._validate_foreign_key_by_external_id(
+            foreign_key_field='content',
+            foreign_key_model=Content,
+            raise_exception=True
+        )
+
+    def is_valid(self, raise_exception=False):
+        """ Validate the content foreign key field.
+
+        :param raise_exception: True if an exception should be raised during validation.
+        :return: True if record is valid, false if record is invalid.
+        """
+        # retrieve a content instance using the external ID found in the Bulk Import table, and place the model
+        # instance into the self.initial_data
+        self.__validate_content_foreign_key()
+        # perform additional validation such as model specific validation
+        return super(AbstractContentLinkModelSerializer, self).is_valid(raise_exception=raise_exception)
+
+
 class GroupingAirTableSerializer(AbstractModelWithAliasesSerializer):
     """ Serializer for groupings that were defined through the Air Table templates.
 
@@ -1119,7 +1261,7 @@ class GroupingAirTableSerializer(AbstractModelWithAliasesSerializer):
         #: Model fields that are excluded here must be passed into the validated_data dictionary through the
         # self.custom_validated_data dictionary attribute, before the super's create(...) method is called.
         exclude = FdpModelSerializer.excluded_fields + [
-            'belongs_to_grouping', 'cease_date', 'code', 'counties', 'description', 'inception_date', 'is_inactive'
+            'belongs_to_grouping', 'cease_date', 'counties', 'description', 'inception_date', 'is_inactive'
         ]
 
 
@@ -1921,6 +2063,7 @@ class ContentAirTableSerializer(FdpModelSerializer):
         :return: True if record is valid, false if record is invalid.
         """
         self._convert_null_to_blank(field_name='description')
+        self._convert_null_to_blank(field_name='name')
         # validate the given the content type by its name, and add it as a model instance if it does not already
         # exist, and then place the value into self.initial_data
         self._validate_foreign_key_by_name(
@@ -1929,11 +2072,6 @@ class ContentAirTableSerializer(FdpModelSerializer):
             create_unknown=False,
             raise_exception=False
         )
-        # content must have a name
-        content_name_field = 'name'
-        content_name = self.initial_data.get(content_name_field, '')
-        if not content_name:
-            self.initial_data[content_name_field] = str(_('Unnamed'))
         # validate record
         is_valid = super(ContentAirTableSerializer, self).is_valid(raise_exception=raise_exception)
         # record is valid
@@ -2391,3 +2529,254 @@ class PersonPaymentAirTableSerializer(AbstractAsOfDateBoundedModelSerializer, Ab
         exclude = list(set(AbstractAsOfDateBoundedModelSerializer.excluded_fields +
                            AbstractPersonLinkModelSerializer.excluded_fields +
                            []))
+
+
+class PersonIncidentAirTableSerializer(AbstractPersonLinkModelSerializer):
+    """ Serializer for person-incidents that were defined through the Air Table templates.
+
+    Attributes:
+        :incident (str): Incident matched by external incident ID.
+        :is_guess_checkbox (str): Is guess checkbox.
+    """
+    incident = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Incident - match by external incident ID')
+    )
+
+    is_guess_checkbox = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Is guess checkbox')
+    )
+
+    def __validate_is_guess_checkbox(self):
+        """ Validates the Is Guess checkbox field.
+
+        :return: Nothing.
+        """
+        self._validate_checkbox_field(
+            unvalidated_checkbox_field='is_guess_checkbox',
+            validated_checkbox_field='is_guess'
+        )
+
+    def is_valid(self, raise_exception=False):
+        """ Validates for optional custom attributes.
+
+        :param raise_exception: True if an exception should be raised during validation.
+        :return: True if record is valid, false if record is invalid.
+        """
+        # validate the incident by its external ID, and if validated, place the value into self.initial_data
+        self._validate_foreign_key_by_external_id(
+            foreign_key_field='incident',
+            foreign_key_model=Incident,
+            raise_exception=True
+        )
+        # validate record
+        is_valid = super(PersonIncidentAirTableSerializer, self).is_valid(raise_exception=raise_exception)
+        # record is valid
+        if is_valid:
+            self.__validate_is_guess_checkbox()
+        return is_valid
+
+    class Meta:
+        model = PersonIncident
+        #: Model fields that are excluded here must be passed into the validated_data dictionary through the
+        # self.custom_validated_data dictionary attribute, before the super's create(...) method is called.
+        exclude = list(set(AbstractPersonLinkModelSerializer.excluded_fields +
+                           ['situation_role', 'description', 'is_guess', 'known_info', 'tags']))
+
+
+class ContentPersonAirTableSerializer(AbstractPersonLinkModelSerializer, AbstractContentLinkModelSerializer):
+    """ Serializer for content-persons that were defined through the Air Table templates.
+
+    Attributes:
+        :is_guess_checkbox (str): Is guess checkbox.
+    """
+    is_guess_checkbox = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Is guess checkbox')
+    )
+
+    def __validate_is_guess_checkbox(self):
+        """ Validates the Is Guess checkbox field.
+
+        :return: Nothing.
+        """
+        self._validate_checkbox_field(
+            unvalidated_checkbox_field='is_guess_checkbox',
+            validated_checkbox_field='is_guess'
+        )
+
+    def is_valid(self, raise_exception=False):
+        """ Validates for optional custom attributes.
+
+        :param raise_exception: True if an exception should be raised during validation.
+        :return: True if record is valid, false if record is invalid.
+        """
+        # validate record
+        is_valid = super(ContentPersonAirTableSerializer, self).is_valid(raise_exception=raise_exception)
+        # record is valid
+        if is_valid:
+            self.__validate_is_guess_checkbox()
+        return is_valid
+
+    class Meta:
+        model = ContentPerson
+        #: Model fields that are excluded here must be passed into the validated_data dictionary through the
+        # self.custom_validated_data dictionary attribute, before the super's create(...) method is called.
+        exclude = list(set(AbstractPersonLinkModelSerializer.excluded_fields +
+                           ['situation_role', 'description', 'is_guess', 'known_info']))
+
+
+class ContentIdentifierAirTableSerializer(AbstractContentLinkModelSerializer):
+    """ Serializer for content-identifiers that were defined through the Air Table templates.
+
+    Attributes:
+        :content_identifier_type (str): Content identifier type matched by unique name or added if it does not exist.
+    """
+    content_identifier_type = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Type - match by unique name, or add if it does not exist')
+    )
+
+    def is_valid(self, raise_exception=False):
+        """ Validates for optional custom attributes.
+
+        :param raise_exception: True if an exception should be raised during validation.
+        :return: True if record is valid, false if record is invalid.
+        """
+        identifier = self.initial_data.get('identifier', None)
+        if not(identifier and str(identifier).strip()):
+            self.initial_data['identifier'] = str(_('Unknown'))
+        # validate the given the content identifier type by its name, and add it as a model instance if it does not
+        # already exist, and then place the value into self.initial_data
+        self._validate_foreign_key_by_name(
+            foreign_key_field='content_identifier_type',
+            foreign_key_model=ContentIdentifierType,
+            create_unknown=True,
+            raise_exception=True
+        )
+        # validate record
+        return super(ContentIdentifierAirTableSerializer, self).is_valid(raise_exception=raise_exception)
+
+    class Meta:
+        model = ContentIdentifier
+        #: Model fields that are excluded here must be passed into the validated_data dictionary through the
+        # self.custom_validated_data dictionary attribute, before the super's create(...) method is called.
+        exclude = list(set(AbstractContentLinkModelSerializer.excluded_fields +
+                           FdpModelSerializer.confidentiable_excluded_fields + ['description']))
+
+
+class AttachmentAirTableSerializer(FdpModelSerializer):
+    """ Serializer for attachments that were defined through the Air Table templates.
+
+    Attributes:
+        :type (str): Type for attachment, add if it does not exist.
+        :file_path (str): Relative path for attachment file.
+        :unsplit_content (str): External content IDs separated by commas.
+    """
+    type = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Type for attachment, add if it does not exist')
+    )
+
+    file_path = CharField(
+        required=False,
+        allow_null=True,
+        label=_('Relative path for file')
+    )
+
+    unsplit_content = CharField(
+        required=False,
+        allow_null=True,
+        label=_('External content IDs separated by commas')
+    )
+
+    #: Key used to reference in the _validated_data dictionary, the list of content that link to the attachment.
+    __split_content_key = 'split_content'
+
+    def __validate_content(self):
+        """ Validates the content field.
+
+        If validated, prepares the corresponding Content instances.
+
+        :return: Nothing.
+        """
+        # split content
+        unsplit_content_key = 'unsplit_content'
+        unsplit_content = self.validated_data.pop(unsplit_content_key, '')
+        split_content = str(unsplit_content).split(',') if unsplit_content else []
+        self._validated_data[self.__split_content_key] = []
+        if split_content:
+            for content_external_id in split_content:
+                stripped_content_external_id = content_external_id.strip()
+                if stripped_content_external_id:
+                    self._match_by_external_id(
+                        external_id_to_match=stripped_content_external_id,
+                        model=Content,
+                        validated_data_key=self.__split_content_key
+                    )
+
+    def is_valid(self, raise_exception=False):
+        """ Validates for optional custom attributes.
+
+        :param raise_exception: True if an exception should be raised during validation.
+        :return: True if record is valid, false if record is invalid.
+        """
+        name = self.initial_data.get('name', None)
+        if not(name and str(name).strip()):
+            self.initial_data['name'] = str(_('Unnamed'))
+        self._convert_null_to_blank(field_name='description')
+        # validate the given the type by its name, and add it as a model instance if it does not already
+        # exist, and then place the value into self.initial_data
+        self._validate_foreign_key_by_name(
+            foreign_key_field='type',
+            foreign_key_model=AttachmentType,
+            create_unknown=False,
+            raise_exception=False
+        )
+        # validate record
+        is_valid = super(AttachmentAirTableSerializer, self).is_valid(raise_exception=raise_exception)
+        # record is valid
+        if is_valid:
+            self.__validate_content()
+        return is_valid
+
+    def create(self, validated_data):
+        """ Creates a new attachment and its related data.
+
+        :param validated_data: Dictionary of validated data used to creating new content and its related data.
+        :return: Instance of newly created attachment.
+        """
+        # validated data before values are popped from it
+        self.original_validated_data = validated_data.copy()
+        # pop custom fields from validated data
+        file_path = validated_data.pop('file_path', None)
+        split_content_ids = validated_data.pop(self.__split_content_key, [])
+        # instance has been added into bulk import table
+        instance = super(AttachmentAirTableSerializer, self).create(validated_data=validated_data)
+        # add relative file path and validate
+        if file_path:
+            instance.file = file_path
+            instance.full_clean()
+            instance.save()
+        # optionally link content with attachment
+        if split_content_ids:
+            # TODO: Confidentiality filtering
+            # TODO: accessible_content = Content.objects.all().filter_for_confidential_by_user(user=user)
+            accessible_content = Content.objects.all()
+            for content_id in split_content_ids:
+                content = accessible_content.get(pk=content_id)
+                content.attachments.add(instance)
+        return instance
+
+    class Meta:
+        model = Attachment
+        #: Model fields that are excluded here must be passed into the validated_data dictionary through the
+        # self.custom_validated_data dictionary attribute, before the super's create(...) method is called.
+        exclude = list(set(FdpModelSerializer.excluded_fields +
+                           FdpModelSerializer.confidentiable_excluded_fields + ['extension', 'file']))

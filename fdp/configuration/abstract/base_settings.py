@@ -6,7 +6,8 @@ This file is imported and provides definitions for all settings files.
 
 """
 
-from .constants import CONST_AXES_AUTH_BACKEND, CONST_DJANGO_AUTH_BACKEND
+from .constants import CONST_AXES_AUTH_BACKEND, CONST_DJANGO_AUTH_BACKEND, CONST_MAX_ATTACHMENT_FILE_BYTES, \
+    CONST_SUPPORTED_ATTACHMENT_FILE_TYPES, CONST_MAX_PERSON_PHOTO_FILE_BYTES, CONST_SUPPORTED_PERSON_PHOTO_FILE_TYPES
 from django.urls import reverse_lazy
 from django.core.exceptions import ImproperlyConfigured
 from pathlib import Path
@@ -202,6 +203,9 @@ INSTALLED_APPS = [
     'cspreports',
     # Django reCAPTCHA: https://github.com/praekelt/django-recaptcha
     'captcha',
+    # Django Data Wizard: https://github.com/wq/django-data-wizard
+    'data_wizard',
+    'data_wizard.sources',
     # abstract base classes attributes and functionality reused throughout project
     'inheritable',
     # extends standard Django authentication and user roles to customize project
@@ -220,9 +224,6 @@ INSTALLED_APPS = [
     'profiles',
     # data model organizing user verification of data
     'verifying',
-    # Django Data Wizard: https://github.com/wq/django-data-wizard
-    'data_wizard',
-    'data_wizard.sources',
 ]
 
 
@@ -681,3 +682,23 @@ FDP_ERR_LOGGING = {
 # It must end in a slash if set to a non-empty value.
 # See the Django setting MEDIA_URL for similarities.
 FDP_MEDIA_URL = '/perm/media/'
+
+
+# The maximum number of bytes that a user-uploaded file can have for an instance of the Attachment model.
+FDP_MAX_ATTACHMENT_FILE_BYTES = CONST_MAX_ATTACHMENT_FILE_BYTES
+
+
+# A list of tuples that define the types of user-uploaded files that are supported for an instance of the Attachment
+# model. Each tuple has two items: the first is a user-friendly short description of the supported file type; the second
+# is the expected extension of the supported file type.
+FDP_SUPPORTED_ATTACHMENT_FILE_TYPES = CONST_SUPPORTED_ATTACHMENT_FILE_TYPES
+
+
+# The maximum number of bytes that a user-uploaded file can have for an instance of the Person Photo model.
+FDP_MAX_PERSON_PHOTO_FILE_BYTES = CONST_MAX_PERSON_PHOTO_FILE_BYTES
+
+
+# A list of tuples that define the types of user-uploaded files that are supported for an instance of the Person Photo
+# model. Each tuple has two items: the first is a user-friendly short description of the supported file type; the second
+# is the expected extension of the supported file type.
+FDP_SUPPORTED_PERSON_PHOTO_FILE_TYPES = CONST_SUPPORTED_PERSON_PHOTO_FILE_TYPES

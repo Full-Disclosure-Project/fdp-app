@@ -7,7 +7,8 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.utils.timezone import now
 from django.utils._os import safe_join
-from fdp.configuration.abstract.constants import CONST_AZURE_AD_PROVIDER
+from fdp.configuration.abstract.constants import CONST_AZURE_AD_PROVIDER, CONST_MAX_ATTACHMENT_FILE_BYTES, \
+    CONST_MAX_PERSON_PHOTO_FILE_BYTES, CONST_SUPPORTED_ATTACHMENT_FILE_TYPES, CONST_SUPPORTED_PERSON_PHOTO_FILE_TYPES
 from datetime import date
 from os import path
 from cryptography.fernet import Fernet
@@ -1046,36 +1047,17 @@ class AbstractFileValidator(models.Model):
         There are no attributes.
 
     """
-    # Maximum size in bytes for uploaded attachment files
-    MAX_ATTACHMENT_SIZE = 104857600
-
-    # Maximum size in megabytes for uploaded attachment files
-    MAX_ATTACHMENT_MB_SIZE = int(MAX_ATTACHMENT_SIZE / 1048576)
-
-    # Supported file types for uploaded attachment files
-    SUPPORTED_ATTACHMENT_FILES = [
-        ('Adobe PDF', 'pdf'), ('Microsoft Word 97-2003', 'doc'), ('Microsoft Word 2007+', 'docx'), ('Text file', 'txt'),
-        ('Rich-text format', 'rtf'), ('JPG image file', 'jpg'), ('JPEG image file', 'jpeg'), ('PNG image file', 'png'),
-        ('GIF image file', 'gif'), ('BMP image file', 'bmp'), ('TIFF image file', 'tiff'), ('TIF image file', 'tif'),
-        ('Microsoft Excel 97-2003', 'xls'), ('Microsoft Excel 2007+', 'xlsx'), ('Comma-separated value file', 'csv'),
-        ('Microsoft PowerPoint 97-2003', 'ppt'), ('Microsoft PowerPoint 2007+', 'pptx'),
-        ('Apple Quicktime video file', 'mov'), ('MPEG-4 video file', 'mp4'),
-    ]
-
     # Maximum length for the VARCHAR(...) file field storing the attachment path and filename
     MAX_ATTACHMENT_FILE_LEN = settings.MAX_NAME_LEN
 
-    # Maximum size in bytes for uploaded photo files
-    MAX_PHOTO_SIZE = 2097152
+    @staticmethod
+    def get_megabytes_from_bytes(num_of_bytes):
+        """ Converts bytes into megabytes.
 
-    # Maximum size in megabytes for uploaded photo files
-    MAX_PHOTO_MB_SIZE = int(MAX_PHOTO_SIZE / 1048576)
-
-    # Supported file types for uploaded photo files
-    SUPPORTED_PHOTO_FILES = [
-        ('JPG image file', 'jpg'), ('JPEG image file', 'jpeg'), ('PNG image file', 'png'),
-        ('GIF image file', 'gif'), ('BMP image file', 'bmp'), ('TIFF image file', 'tiff'), ('TIF image file', 'tif')
-    ]
+        :param num_of_bytes: Number of bytes to convert to megabytes.
+        :return: Number of megabytes.
+        """
+        return int(num_of_bytes / 1048576)
 
     @staticmethod
     def get_file_extension(file_path):
@@ -1110,7 +1092,7 @@ class AbstractFileValidator(models.Model):
         """
         file_name, extension = path.splitext(value.name)
         extension = extension.lower()
-        if extension not in ['.{x}'.format(x=x[1]) for x in AbstractFileValidator.SUPPORTED_ATTACHMENT_FILES]:
+        if extension not in ['.{x}'.format(x=x[1]) for x in AbstractConfiguration.supported_attachment_file_types()]:
             raise ValidationError(_('%(file)s is not a supported file type'), params={'file': value.name})
 
     @staticmethod
@@ -1120,10 +1102,11 @@ class AbstractFileValidator(models.Model):
         :param value: User uploaded attachment file whose size should be checked.
         :return: Nothing.
         """
-        if value.size > AbstractFileValidator.MAX_ATTACHMENT_SIZE:
+        max_size = AbstractConfiguration.max_attachment_file_bytes()
+        if value.size > max_size:
             raise ValidationError(
                 _('%(file)s is %(size)s bytes exceeding the maximum allowable size of %(max)s bytes'),
-                params={'file': value.name, 'size': value.size, 'max': AbstractFileValidator.MAX_ATTACHMENT_SIZE}
+                params={'file': value.name, 'size': value.size, 'max': max_size}
             )
 
     @staticmethod
@@ -1135,7 +1118,7 @@ class AbstractFileValidator(models.Model):
         """
         file_name, extension = path.splitext(value.name)
         extension = extension.lower()
-        if extension not in ['.{x}'.format(x=x[1]) for x in AbstractFileValidator.SUPPORTED_PHOTO_FILES]:
+        if extension not in ['.{x}'.format(x=x[1]) for x in AbstractConfiguration.supported_person_photo_file_types()]:
             raise ValidationError(_('%(file)s is not a supported file type'), params={'file': value.name})
 
     @staticmethod
@@ -1145,10 +1128,11 @@ class AbstractFileValidator(models.Model):
         :param value: User uploaded photo file whose size should be checked.
         :return: Nothing.
         """
-        if value.size > AbstractFileValidator.MAX_PHOTO_SIZE:
+        max_size = AbstractConfiguration.max_person_photo_file_bytes()
+        if value.size > max_size:
             raise ValidationError(
                 _('%(file)s is %(size)s bytes exceeding the maximum allowable size of %(max)s bytes'),
-                params={'file': value.name, 'size': value.size, 'max': AbstractFileValidator.MAX_PHOTO_SIZE}
+                params={'file': value.name, 'size': value.size, 'max': max_size}
             )
 
     @staticmethod
@@ -1363,6 +1347,9 @@ class AbstractUrlValidator(models.Model):
 
     # relative URL for a user to reset their own 2FA
     FDP_USER_RESET_2FA_URL = '{b}{s}2fa/reset/'.format(b=FDP_USER_BASE_URL, s=FDP_USER_SETTINGS_URL)
+
+    # relative URL for asynchronously renewing a user's session to avoid it expiring
+    ASYNC_RENEW_SESSION_URL = '{b}async/renew/session/'.format(b=FDP_USER_BASE_URL)
 
     # queryset GET parameter used to identify original search criteria entered by user
     GET_ORIGINAL_PARAM = 'orig'
@@ -3022,6 +3009,54 @@ class AbstractConfiguration(models.Model):
         :return: Number of seconds.
         """
         return getattr(settings, 'DATA_WIZARD_STATUS_CHECK_SECONDS', 1)
+
+    @staticmethod
+    def max_attachment_file_bytes():
+        """ Checks the necessary setting to retrieve the maximum number of bytes that a user-uploaded file can have
+        for an instance of the Attachment model.
+
+        :return: Number of bytes.
+        """
+        return getattr(settings, 'FDP_MAX_ATTACHMENT_FILE_BYTES',  CONST_MAX_ATTACHMENT_FILE_BYTES)
+
+    @staticmethod
+    def supported_attachment_file_types():
+        """ Checks the necessary setting to retrieve a list of tuples that define the types of user-uploaded files that
+        are supported for an instance of the Attachment model. Each tuple has two items: the first is a user-friendly
+        short description of the supported file type; the second is the expected extension of the supported file type.
+
+        :return: List of tuples, each with two items.
+        """
+        return getattr(settings, 'FDP_SUPPORTED_ATTACHMENT_FILE_TYPES',  CONST_SUPPORTED_ATTACHMENT_FILE_TYPES)
+
+    @staticmethod
+    def max_person_photo_file_bytes():
+        """ Checks the necessary setting to retrieve the maximum number of bytes that a user-uploaded file can have for
+        an instance of the Person Photo model.
+
+        :return: Number of bytes.
+        """
+        return getattr(settings, 'FDP_MAX_PERSON_PHOTO_FILE_BYTES',  CONST_MAX_PERSON_PHOTO_FILE_BYTES)
+
+    @staticmethod
+    def supported_person_photo_file_types():
+        """ Checks the necessary setting to retrieve a list of tuples that define the types of user-uploaded files that
+        are supported for an instance of the Person Photo model. Each tuple has two items: the first is a user-friendly
+        short description of the supported file type; the second is the expected extension of the supported file type.
+
+        :return: List of tuples, each with two items.
+        """
+        return getattr(settings, 'FDP_SUPPORTED_PERSON_PHOTO_FILE_TYPES',  CONST_SUPPORTED_PERSON_PHOTO_FILE_TYPES)
+
+    @staticmethod
+    def whitelisted_django_data_wizard_urls():
+        """ Checks the necessary settings to retrieve the whitelisted URLs that will be used to vet publicly accessible
+        URLs from which to download files for person photos and attachments during a bulk import with the Django Data
+        Wizard package.
+
+        :return: List of whitelisted URLs.
+        """
+        return getattr(settings, 'FDP_DJANGO_DATA_WIZARD_WHITELISTED_URLS', [])
 
     class Meta:
         abstract = True

@@ -2,8 +2,9 @@ from django.contrib import admin
 from django.utils.translation import ugettext_lazy as _
 from .models import BulkImport, FdpImportFile, FdpImportMapping, FdpImportRun
 from inheritable.admin import FdpInheritableBaseAdmin, HostOnlyAdmin
-from data_wizard.admin import ImportActionModelAdmin
 from data_wizard.models import Identifier, Run
+from data_wizard.sources.models import URLSource
+from data_wizard.sources.admin import ImportActionModelAdmin
 
 
 @admin.register(BulkImport)
@@ -265,3 +266,7 @@ class FdpImportRunAdmin(HostOnlyAdmin):
         :return: Always false.
         """
         return False
+
+
+#  Unregister admin for URL Sources since it is a Server-Side Request Forgery (SSRF) risk
+admin.site.unregister(URLSource)
