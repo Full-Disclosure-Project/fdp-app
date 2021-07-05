@@ -2,6 +2,6 @@
 {# based on https://github.com/wq/django-data-wizard/blob/main/data_wizard/templates/data_wizard/progress.html #}
 {# see also https://github.com/wq/django-data-wizard/tree/main/packages/progress #}
 <progress data-wq-url="{% url 'data_wizard:run-status' pk=id %}?format=json&task={{task_id}}"
-   data-wq-status="status" data-wq-interval={% num_of_secs_between_data_wizard_import_status_checks %} style="width:100%">
+   data-wq-status="status" data-wq-interval={% num_of_secs_between_data_wizard_import_status_checks %} id="cspprogress">
   Loading...
 </progress>

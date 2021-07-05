@@ -1,0 +1,18 @@
+{% extends "data_wizard/base_site.html" %}
+{% load static compress %}
+{% block extrahead %}
+{{ block.super }}
+{% compress js %}<script type="text/javascript" src="{% static 'js/data_wizard_progress.js' %}"></script>{% endcompress %}
+{% endblock %}
+{% block content %}
+{% block wizardstep %}
+<h2>Processing</h2>
+{% endblock %}
+{% include "data_wizard/progress.html" %}
+<ul class="messagelist" id="csprunautomessagelist">
+  <li id="status">Loading...</li>
+</ul>
+<div class="submit-row" id="csprunautohidden">
+  {% include "data_wizard/back.html" %}
+</div>
+{% endblock %}

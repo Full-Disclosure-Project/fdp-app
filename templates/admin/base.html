@@ -1,4 +1,4 @@
-{% load i18n static compress %}<!DOCTYPE html>
+{% load i18n static compress fdp_extras %}<!DOCTYPE html>
 {% get_current_language as LANGUAGE_CODE %}{% get_current_language_bidi as LANGUAGE_BIDI %}
 <html lang="{{ LANGUAGE_CODE|default:"en-us" }}" {% if LANGUAGE_BIDI %}dir="rtl"{% endif %}>
 <head>
@@ -10,9 +10,24 @@
   <script src="{% static 'admin/js/nav_sidebar.js' %}" defer></script>
 {% endif %}
 {% endcompress %}
-{% block extrastyle %}{% endblock %}
+{% block extrastyle %}
+    {% compress css %}
+    <link rel="stylesheet" type="text/css" href="{% static 'css/fdp_all.css' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/fdp_ajax_base.css' %}">
+    {% endcompress %}
+    {% if user.is_authenticated %}
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/vex-js/4.1.0/css/vex-theme-default.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/vex-js/4.1.0/css/vex.min.css">
+    {% endif %}
+{% endblock %}
 {% if LANGUAGE_BIDI %}{% compress css %}<link rel="stylesheet" type="text/css" href="{% block stylesheet_rtl %}{% static "admin/css/rtl.css" %}{% endblock %}">{% endcompress %}{% endif %}
-{% block extrahead %}{% endblock %}
+{% block extrahead %}
+    {% if user.is_authenticated %}
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vex-js/4.1.0/js/vex.combined.min.js"></script>
+    {% compress js %}<script src="{% static 'js/common.js' %}"></script>{% endcompress %}
+    {% endif %}
+{% endblock %}
 {% block responsive %}
     <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1.0, maximum-scale=1.0">
     {% compress css %}<link rel="stylesheet" type="text/css" href="{% static "admin/css/responsive.css" %}">
@@ -55,7 +70,7 @@
                 <a href="{% url 'admin:password_change' %}">{% translate 'Change password' %}</a> /
                 {% endif %}
                 {% if not user.only_external_auth %}
-                    <a href="{% url 'admin:logout' %}">{% translate 'Log out' %}</a>
+                    <a class="onlogout" href="{% url 'admin:logout' %}">{% translate 'Log out' %}</a>
                 {% else %}
                     {% include "common/fdp_logout.html" %}
                 {% endif %}
@@ -106,6 +121,48 @@
     </div>
 </div>
 <!-- END Container -->
-{% block endscript %}{% endblock %}
+{% block endscript %}
+    <script type="text/javascript" nonce="{{ request.csp_nonce }}">
+        {% if user.is_authenticated %} $( document ).ready(function() { {% endif %}
+            {% block onready %}
+                {% if user.is_authenticated %}
+                Fdp.Common.locSessionExpiryButton = "{% trans 'Renew' %}";
+                Fdp.Common.locSessionExpiredButton = "{% trans 'Log in' %}";
+                Fdp.Common.locSessionSuffix = "{% trans ' | FDP System' %}";
+                Fdp.Common.locSessionExpiredTitle = "{% trans 'Expired Session' %}";
+                Fdp.Common.locSessionExpiryTitle = "{% trans 'Renew Session' %}";
+                Fdp.Common.locSessionRenewMessage = "{% trans '. Would you like to renew it?' %}";
+                Fdp.Common.locSessionExpiryMessage = "{% trans 'Your session will expire in ' %}";
+                Fdp.Common.locSessionExpiredMessage = "{% trans 'Your session has expired. Please log in again.' %}";
+                Fdp.Common.locSessionExpirySecond = "{% trans 'second' %}";
+                Fdp.Common.locSessionExpirySeconds = "{% trans 'seconds' %}";
+                Fdp.Common.locErrorTitle = "{% trans 'There was a problem...' %}";
+                Fdp.Common.locBrowserUnsupported = "{% trans 'Your Internet browser is not supported. Please use an updated version of Mozilla Firefox or Google Chrome.' %}";
+                vex.defaultOptions.className = 'vex-theme-default';
+                Fdp.Common.initSessionExpiryCheck({{ request.session.get_expiry_age }} /* sessionAge */);
+                Fdp.Common.locLoading = "{% trans 'Loading' %}";
+                Fdp.Common.locRawErrorTitle = "{% trans 'Something unexpected happened...' %}";
+                Fdp.Common.locRawErrorMessage = "{% trans 'Please open the link below to see the error details.' %}";
+                Fdp.Common.locRawErrorDetails = "{% trans 'Error details' %}";
+                Fdp.Common.locSave = "{% trans 'Save' %}";
+                Fdp.Common.locCancel = "{% trans 'Cancel' %}";
+                Fdp.Common.locClickToEdit = "{% trans 'Click to edit' %}";
+                Fdp.Common.jsonIsError = "{% get_abstract_url_validator_attr 'JSON_ERR_PARAM' %}";
+                Fdp.Common.jsonIsEmpty = "{% get_abstract_url_validator_attr 'JSON_EMP_PARAM' %}";
+                Fdp.Common.jsonIsData = "{% get_abstract_url_validator_attr 'JSON_DAT_PARAM' %}";
+                Fdp.Common.jsonIsHtml = "{% get_abstract_url_validator_attr 'JSON_HTM_PARAM' %}";
+                Fdp.Common.jsonError = "{% get_abstract_url_validator_attr 'JSON_ERR_DAT_PARAM' %}";
+                Fdp.Common.jsonData = "{% get_abstract_url_validator_attr 'JSON_DAT_DAT_PARAM' %}";
+                Fdp.Common.jsonHtml = "{% get_abstract_url_validator_attr 'JSON_HTM_DAT_PARAM' %}";
+                Fdp.Common.asyncRenewSessionUrl = "{% url 'fdpuser:async_renew_session' %}";
+                Fdp.Common.locError = "{% trans 'Error' %}";
+                Fdp.Common.locConfirmationTitle = "{% trans 'Are you sure?' %}";
+                Fdp.Common.locPopupError = "{% trans 'This popup window is disconnected from the window where it was created. Please close both windows and try again.' %}";
+                Fdp.Common.initAjax(true);
+                {% endif %}
+            {% endblock %}
+        {% if user.is_authenticated %} }); {% endif %}
+    </script>
+{% endblock %}
 </body>
 </html>

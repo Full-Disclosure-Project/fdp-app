@@ -2,6 +2,7 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm, ReadOnly
 from django.contrib.auth.tokens import default_token_generator
 from .models import FdpUser, PasswordReset
 from captcha.fields import ReCaptchaField
+from captcha.widgets import ReCaptchaV2Checkbox
 
 
 class FdpUserCreationForm(UserCreationForm):
@@ -128,8 +129,52 @@ class FdpUserPasswordResetForm(PasswordResetForm):
             PasswordReset.objects.create_password_reset(email=user.email, request=request)
 
 
-class FdpUserPasswordResetWithReCaptchaForm(FdpUserPasswordResetForm):
-    """ Overrides the FDP user password reset form, so that reCAPTCHA is included.
+class CspFriendlyReCaptchaV2Checkbox(ReCaptchaV2Checkbox):
+    """ Overrides the default widget used to render the reCAPTCHA field so that a NONCE can be added to the inline
+    JavaScript block in order to comply with Content Security Policies (CSPs).
 
     """
-    captcha = ReCaptchaField()
+    template_name = 'csp_friendly_captcha/widget_v2_checkbox.html'
+
+    def get_context(self, name, value, attrs):
+        """ Adds nonce to the context dictionary so that it can be used to render inline JavaScript blocks that
+        comply with Content Security Policies (CSPs).
+
+        See: https://docs.djangoproject.com/en/3.2/ref/forms/widgets/#django.forms.Widget.get_context
+
+        :param name: Name of field.
+        :param value: Value of field.
+        :param attrs: Dictionary of attributes that define the widget.
+        :return: Dictionary representing context.
+        """
+        context = super().get_context(name=name, value=value, attrs=attrs)
+        # added as property of the widget in the __init__(...) method of the containing form
+        context['csp_nonce'] = getattr(self, 'csp_nonce', '')
+        return context
+
+
+class CspFriendlyReCaptchaField(ReCaptchaField):
+    """ Overrides the default reCAPTCHA field so that a nonce can be added to the inline JavaScript block in order to
+    comply with Content Security Policies (CSPs).
+
+    """
+    widget = CspFriendlyReCaptchaV2Checkbox
+
+
+class FdpUserPasswordResetWithReCaptchaForm(FdpUserPasswordResetForm):
+    """ Overrides the FDP user password reset form, so that reCAPTCHA is included. Also, includes nonce that is added
+    to the inline JavaScript block in order to comply with Content Security Policies (CSPs).
+
+    """
+    captcha = CspFriendlyReCaptchaField()
+
+    def __init__(self, csp_nonce, *args, **kwargs):
+        """ Passes nonce used for CSP to the widget so that it can be access from the widget template.
+
+        :param csp_nonce: Nonce value used to validate inline JavaScript blocks under Content Security Policies (CSPs).
+        :param args:
+        :param kwargs:
+        """
+        super().__init__(*args, **kwargs)
+        # will be used by the get_context(...) method of the widget
+        self.fields['captcha'].widget.csp_nonce = csp_nonce

@@ -1,0 +1,28 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% block title %}{{ label }} | Django Data Wizard{% endblock %}
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'data_wizard:run-list' %}">Django Data Wizard</a></h1>
+{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Admin Home</a>
+  &rsaquo;
+  <a href="{% url 'data_wizard:run-list' %}">Data Wizard</a>
+  &rsaquo;
+  {{ label }}
+</div>
+{% endblock %}
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" type="text/css" href="{% static 'admin/css/forms.css' %}">
+<link rel="stylesheet" type="text/css" href="{% static 'data_wizard/css/base.css' %}">
+<style type="text/css" nonce="{{ request.csp_nonce }}">
+  #csprunautomessagelist { margin-top:1em; }
+  #csprunautohidden { display:none; }
+  #cspprogress { width:100%; }
+</style>
+{% endblock %}
+{% block content_title %}
+<h1>{{label}}</h1>
+{% endblock %}

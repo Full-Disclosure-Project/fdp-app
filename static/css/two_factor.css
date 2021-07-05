@@ -70,3 +70,12 @@
 .login a.aadlogin {
     float: right;
 }
+.login div.clear {
+    clear:both;
+}
+#enable {
+    display:none;
+}
+#terms p a.eula {
+    font-weight: bold;
+}

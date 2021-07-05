@@ -481,7 +481,6 @@ CSP_OBJECT_SRC = ("'none'",)
 # the https: and http: whitelist entries will be ignored by modern browsers. Older browsers will allow the loading of
 # scripts from any URL.
 CSP_SCRIPT_SRC = (
-    "'unsafe-inline'",
     "'self'",
     'https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/',
     'https://ajax.googleapis.com/ajax/libs/jquery/',
@@ -498,7 +497,6 @@ CSP_FRAME_ANCESTORS = ("'none'",)
 # The default-src is the default policy for loading content such as JavaScript, Images, CSS, Fonts, AJAX requests,
 # Frames, HTML5 Media.
 CSP_DEFAULT_SRC = (
-    "'unsafe-inline'",
     "'self'",
     'https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/',
     'https://ajax.googleapis.com/ajax/libs/jqueryui/',
@@ -507,6 +505,8 @@ CSP_DEFAULT_SRC = (
     'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/',
     "'self' data:",
 )
+# Defines valid sources for stylesheets.
+CSP_STYLE_SRC = CSP_DEFAULT_SRC
 # Defines valid sources that can be used as a HTML <form> action.
 CSP_FORM_ACTION = ("'self'",)
 # The font-src directive restricts the URLs from which font resources may be loaded.
@@ -518,6 +518,9 @@ CSP_FONT_SRC = (
 # Causes all violations to the policy to be reported to the supplied URL
 # so you can debug them.
 CSP_REPORT_URI = reverse_lazy('report_csp')
+# A tuple or list. Default is None. Include dynamically generated nonce in all listed directives,
+# e.g. CSP_INCLUDE_NONCE_IN=['script-src'] will add 'nonce-<b64-value>' to the script-src directive.
+CSP_INCLUDE_NONCE_IN = ['script-src', 'default-src', 'style-src']
 
 
 # Django Content Security Policy Reports: https://github.com/adamalton/django-csp-reports

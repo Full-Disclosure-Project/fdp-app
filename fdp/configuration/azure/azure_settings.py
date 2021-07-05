@@ -496,6 +496,7 @@ AZURE_MEDIA_URL_EXPIRATION_SECS = get_from_environment_var(
 # Ensure that URLs for Azure Storage static files container are included in the Content Security Policy (CSP)
 CSP_SCRIPT_SRC = CSP_SCRIPT_SRC + (STATIC_URL,)
 CSP_DEFAULT_SRC = CSP_DEFAULT_SRC + (STATIC_URL,)
+CSP_STYLE_SRC = CSP_STYLE_SRC + (STATIC_URL,)
 CSP_FONT_SRC = CSP_FONT_SRC + (STATIC_URL,)
 
 

@@ -7,8 +7,8 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.utils.decorators import method_decorator
 from django.conf import settings
-from inheritable.models import AbstractIpAddressValidator, AbstractConfiguration
-from inheritable.views import SecuredSyncTemplateView, SecuredSyncRedirectView
+from inheritable.models import AbstractIpAddressValidator, AbstractConfiguration, JsonData
+from inheritable.views import SecuredSyncTemplateView, SecuredSyncRedirectView, SecuredAsyncJsonView
 from .models import PasswordReset, FdpUser
 from .forms import FdpUserPasswordResetForm, FdpUserPasswordResetWithReCaptchaForm
 from two_factor.views import LoginView
@@ -152,43 +152,84 @@ class FdpPasswordResetView(PasswordResetView):
     """ Overrides the PasswordResetView to ensure that rate limit is checked before a password reset, and that the
     password reset is logged.
 
+    Also, passes the nonce to the widget that is used to render the reCAPTCHA field, so that an inline JavaScript block
+    can be validated under the Content Security Policies (CSPs).
+
     """
     # Form extended so that password reset is logged and recaptcha is used
     form_class = FdpUserPasswordResetWithReCaptchaForm
 
+    def get_form_kwargs(self):
+        """ Adds the nonce that is used validate an inline JavaScript block under the Content Security Policies (CSPs).
+
+        :return: Dictionary of kwargs with which to instantiate form.
+        """
+        form_kwargs = super().get_form_kwargs()
+        # will eventually be passed to the get_context(...) method of the widget used to render the reCAPTCHA field
+        form_kwargs['csp_nonce'] = self.request.csp_nonce
+        return form_kwargs
+
     @method_decorator(csrf_protect)
-    @csp_update(FRAME_SRC='https://www.google.com/recaptcha/', DEFAULT_SRC="'unsafe-inline'")
-    @csp_replace(
-        SCRIPT_SRC=[
-            "'unsafe-inline'",
-            "'self'",
-            'https://www.google.com/recaptcha/',
-            'https://www.gstatic.com/recaptcha/'
-        ]
+    @csp_update(
+        FRAME_SRC='https://www.google.com/recaptcha/',
+        SCRIPT_SRC=['https://www.google.com/recaptcha/', 'https://www.gstatic.com/recaptcha/', "'unsafe-eval'"]
     )
     def dispatch(self, *args, **kwargs):
-        """ Invalidate user's current password, log out user, record password reset and send
-        email.
+        """ Check whether password reset is supported with the particular settings configuration.
+
+        For example, configuring authentication through only Azure Active Directory will disable password resets.
+
+        Changes the Content Security Policies (CSPs), to allow for access to external Google reCAPTCHA resources.
 
         :param args:
         :param kwargs:
-        :return:
+        :return: Response redirecting to successful password reset regardless of whether a password was actually reset
+        or not.
         """
         if not AbstractConfiguration.can_do_password_reset():
             raise ImproperlyConfigured('Password reset is not supported with this configuration')
+        return super(FdpPasswordResetView, self).dispatch(*args, **kwargs)
+
+    def form_valid(self, form):
+        """ Invalidates a user's current password, logs the user out, records the password reset and sends
+        an email with a tokenized link to change the password.
+
+        Users who are authenticated externally such as through Azure Active Directory, will not have their passwords
+        reset, nor any emails sent. (They do not have "changeable" passwords according to FDP.)
+
+        Similarly, no password reset will be performed and no email sent for a user who does not exist.
+
+        Finally, users who are normally eligible for password resets, but have reached their password reset limits,
+        will also not have their passwords reset, nor any emails sent.
+
+        To minimize user-enumeration attacks, the view will redirect to a successful password reset view regardless of
+        whether the password was actually successfully reset and regardless of whether an email was sent.
+
+        Note from Django: "Be aware that sending an email costs extra time, hence you may be vulnerable to an email
+        address enumeration timing attack due to a difference between the duration of a reset request for an existing
+        email address and the duration of a reset request for a nonexistent email address. To reduce the overhead, you
+        can use a 3rd party package that allows to send emails asynchronously, e.g. django-mailer."
+
+        See: https://docs.djangoproject.com/en/3.2/topics/auth/default/#django.contrib.auth.views.PasswordResetView
+
+        :param form: Form submitted that contains email address of user whose password reset is requested.
+        :return: Response rendering successful password reset page, regardless of actual success.
+        """
         request = self.request
         if request.method == 'POST':
             ip_address = AbstractIpAddressValidator.get_ip_address(request=request)
             email = request.POST.get('email', None)
-            # limit hasn't been reached for email or IP address to reset password
+            # user exists, is internally authenticated and has not reached password reset limits for email or IP address
             if PasswordReset.can_reset_password(user=None, ip_address=ip_address, email=email):
                 user = FdpUser.objects.get(email=email)
                 # Invalidate current password
                 PasswordReset.invalidate_password_logout(user=user, request=request)
-            # limit has been reached for password resets
+            # user does not exist, is externally authenticated, or has reached password reset limits for email or IP
+            # address
             else:
-                raise Exception('Password reset rate limits have been reached')
-        return super(FdpPasswordResetView, self).dispatch(*args, **kwargs)
+                # replace specified email with an invalid email address that does not exist
+                form.cleaned_data['email'] = 'DOESNOTEXIST'
+        return super().form_valid(form=form)
 
 
 class ResetTwoFactorRedirectView(SecuredSyncRedirectView):
@@ -357,3 +398,24 @@ class FdpLoginView(LoginView):
                     return self.render_goto_step('token')
         # otherwise, follow the default process for the GET method
         return response
+
+
+class AsyncRenewSessionView(SecuredAsyncJsonView):
+    """ Asynchronously renews a user's session to avoid it expiring.
+
+    See function _renewUserSession(...) in static/js/common.js for the client-side script submitting the request.
+
+    """
+    def post(self, request, *args, **kwargs):
+        """ Asynchronously renews a user's session to avoid it expiring.
+
+        :param request: Http request object through which asynchronous request was submitted.
+        :param args: Ignored.
+        :param kwargs: Ignored.
+        :return: JSON formatted response containing a True boolean value.
+        """
+        try:
+            json = JsonData(data=True)
+        except Exception as err:
+            json = self.jsonify_error(err=err, b=_('Could not renew session. Please reload the page.'))
+        return self.render_to_response(json=json)
