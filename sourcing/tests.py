@@ -57,7 +57,7 @@ class SourcingTestCase(AbstractTestCase):
                 name=name,
                 for_admin_only=confidential[self._for_admin_only_key],
                 for_host_only=confidential[self._for_host_only_key],
-                file='{b}{f}'.format(b=AbstractUrlValidator.ATTACHMENT_BASE_URL, f='dummy{i}.txt'.format(i=i))
+                file='{b}{f}'.format(b=AbstractUrlValidator.ATTACHMENT_BASE_URL, f='dummy{i}.pdf'.format(i=i))
             )
             self._confidentials[i][self._pk_key] = attachment.pk
             if confidential[self._has_fdp_org_key]:
