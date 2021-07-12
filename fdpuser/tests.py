@@ -108,7 +108,7 @@ class FdpUserTestCase(AbstractTestCase):
         response = self._do_get(
             c=response.client,
             url='/',
-            expected_status_code=302,
+            expected_status_code=302 if not user.only_external_auth else 400,
             login_startswith=reverse('two_factor:{n}'.format(n=CONST_LOGIN_URL_NAME))
         )
         return response
@@ -609,15 +609,14 @@ class FdpUserTestCase(AbstractTestCase):
                     print(_('Password reset #{i} is successful'.format(i=i + 1)))
                     self.assertEqual(PasswordReset.objects.all().count(), i + 1)
                     self.assertTrue(PasswordReset.objects.all().order_by('-pk')[0].ip_address)
-                # no more password resets should be allowed
+                # assert that we've reached the limit for password resets
+                self.assertEqual(PasswordReset.objects.all().count(), max_password_resets)
+                # no more password resets should be allowed (will fail silently)
                 self._do_get(c=client, url=url, expected_status_code=200, login_startswith=None)
-                try:
-                    self._do_post(c=client, url=url, data=data, expected_status_code=302, login_startswith=done_url)
-                    raise Exception(_('Should never arrive here, since above password reset should fail'))
-                except Exception as err:
-                    if not str(err) == 'Password reset rate limits have been reached':
-                        raise Exception(_('Should not arrive here, but an unexpected problem occurred'))
-                print(_('Following password reset was successfully blocked'))
+                self._do_post(c=client, url=url, data=data, expected_status_code=302, login_startswith=done_url)
+                # assert that no more password resets were made
+                self.assertEqual(PasswordReset.objects.all().count(), max_password_resets)
+                print(_('Preceding password reset was successfully blocked'))
                 PasswordReset.objects.all().delete()
                 self.assertEqual(PasswordReset.objects.all().count(), 0)
                 # test changing own password
