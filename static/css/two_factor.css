@@ -46,6 +46,19 @@
     position: absolute;
     left:-9999px;
 }
+.login .link-button{
+    background: #79aec8;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    cursor: pointer;
+    margin: 2px 0;
+    border-radius: 4px;
+}
+.login .putright{
+    float: right;
+}
 .login .qrimage {
     margin: 0 auto;
     display: block;

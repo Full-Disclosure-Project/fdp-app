@@ -8,9 +8,15 @@
 
   {% if not phone_methods %}
     <p>
-        Now please create <strong><a href="{% url 'two_factor:profile' %}" class="pull-right btn btn-link">{% trans "backup tokens" %}</a></strong>
+      <strong>Next Step:</strong>
+    </p>
+    <p>
+        Now please create backup tokens
         for use when your token generating device is not available.
     </p>
+          <a class="link-button putright" href="{% url 'two_factor:profile' %}">
+            Create Backup Tokens
+          </a>
   {% else %}
     <p>{% blocktrans %}However, it might happen that you don't have access to
       your primary token device. To enable account recovery, add a phone
