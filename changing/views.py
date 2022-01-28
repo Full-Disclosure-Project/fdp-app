@@ -18,12 +18,13 @@ from sourcing.models import Attachment, Content, ContentIdentifier, ContentPerso
 from supporting.models import ContentType, County, Location
 from .forms import WizardSearchForm, GroupingModelForm, GroupingAliasModelFormSet, GroupingRelationshipModelForm, \
     GroupingRelationshipModelFormSet, PersonModelForm, PersonAliasModelFormSet, PersonIdentifierModelFormSet, \
-    PersonContactModelFormSet, PersonPaymentModelFormSet, PersonGroupingModelFormSet, PersonTitleModelFormSet, \
+    PersonContactModelFormSet, PersonPaymentModelFormSet, PersonGroupingModelFormSet,PersonTitleModelFormSet, \
     PersonRelationshipModelForm, PersonRelationshipModelFormSet, IncidentModelForm, PersonIncidentModelFormSet, \
     GroupingIncidentModelFormSet, LocationModelForm, ContentIdentifierModelFormSet, ContentCaseModelFormSet, \
     ContentPersonModelFormSet, ContentModelForm, ContentAttachmentModelFormSet, AttachmentModelForm, \
     ContentIncidentModelFormSet, ContentPersonAllegationModelFormSet, ContentPersonPenaltyModelFormSet, \
-    ContentPersonAllegationModelForm, ContentPersonPenaltyModelForm, ReadOnlyContentModelForm, PersonPhotoModelFormSet
+    ContentPersonAllegationModelForm, ContentPersonPenaltyModelForm, ReadOnlyContentModelForm, \
+    PersonPhotoModelFormSet, PersonSocialMediaProfileModelFormSet
 from core.models import Person, PersonIdentifier, Grouping, GroupingAlias, GroupingRelationship, Incident, \
     PersonGrouping, PersonRelationship, PersonIncident, GroupingIncident
 from abc import abstractmethod
@@ -64,6 +65,7 @@ class AbstractPopupView(PopupContextMixin):
     can be added inline on content forms).
 
     """
+
     def _close_popup(self, popup_model_form, not_popup_url):
         """ Closes the popup window, or if form is not rendered in a popup window, then redirects to next step.
 
@@ -610,8 +612,8 @@ class WizardSearchResultsTemplateView(AdminSyncTemplateView):
         # SELECT * FROM ... SQL query to retrieve records matching search criteria
         self._sql_select_query = self.__get_specific_select_query()
         self._select_params = self.__search_class.temp_table_params \
-            + self.__search_class.score_params \
-            + self.__search_class.from_params
+                              + self.__search_class.score_params \
+                              + self.__search_class.from_params
 
     def __do_search(self):
         """ Perform the search and set the queryset and queryset count properties.
@@ -1102,6 +1104,7 @@ class AsyncGetGroupingsView(AbstractAsyncGetModelView):
     """ Asynchronously retrieves groupings that can be linked to a model instance.
 
     """
+
     def _get_specific_queryset(self, filter_dict):
         """ Retrieves a queryset of search results based on the search criteria entered by the user.
 
@@ -1156,6 +1159,7 @@ class AbstractPersonView:
     _titles_key = 'person_title_model_formset'
     _payments_key = 'person_payment_model_formset'
     _aliases_key = 'person_alias_model_formset'
+    _social_media_profiles_key = 'person_social_media_profiles_model_formset'
     _relationships_key = 'person_relationship_model_formset'
     _contacts_key = 'person_contact_model_formset'
     _photos_key = 'person_photo_model_formset'
@@ -1164,6 +1168,7 @@ class AbstractPersonView:
     _titles_dict = {'prefix': 'titles'}
     _payments_dict = {'prefix': 'payments'}
     _aliases_dict = {'prefix': 'aliases'}
+    _social_media_profiles_dict = {'prefix': 'social-media-profile'}
     _relationships_dict = {'prefix': 'relationships'}
     _contacts_dict = {'prefix': 'contacts'}
     _photos_dict = {'prefix': 'photos'}
@@ -1278,7 +1283,7 @@ class AbstractPersonView:
 
     def _update_context_with_formsets(
             self, context, post_data, files_data, identifiers_dict, groupings_dict, titles_dict, payments_dict,
-            aliases_dict, relationships_dict, contacts_dict, photos_dict, user
+            aliases_dict, relationships_dict, contacts_dict, photos_dict, user, social_media_profiles_dict,
     ):
         """ Updates the context dictionary with the inline formsets for persons.
 
@@ -1290,6 +1295,7 @@ class AbstractPersonView:
         :param titles_dict: Dictionary of keyword arguments to pass into titles formset initialization.
         :param payments_dict: Dictionary of keyword arguments to pass into payments formset initialization.
         :param aliases_dict: Dictionary of keyword arguments to pass into aliases formset initialization.
+        :param social_media_profiles_dict: Dictionary of keyword arguments to pass into social_media_profiles formset initialization
         :param relationships_dict: Dictionary of keyword arguments to pass into relationships formset initialization.
         :param contacts_dict: Dictionary of keyword arguments to pass into contacts formset initialization.
         :param photos_dict: Dictionary of keyword arguments to pass into photos formset initialization.
@@ -1315,6 +1321,9 @@ class AbstractPersonView:
             self._aliases_key: PersonAliasModelFormSet(
                 **aliases_dict
             ) if not post_data else PersonAliasModelFormSet(post_data, **aliases_dict),
+            self._social_media_profiles_key: PersonSocialMediaProfileModelFormSet(
+                **social_media_profiles_dict
+            ) if not post_data else PersonSocialMediaProfileModelFormSet(post_data, **social_media_profiles_dict),
             self._relationships_key: self.__get_person_relationship_model_formset(
                 post_data=post_data,
                 relationships_dict=relationships_dict,
@@ -1330,7 +1339,7 @@ class AbstractPersonView:
 
     def _save_forms(
             self, form, identifier_forms, grouping_forms, title_forms, payment_forms, alias_forms,
-            relationship_forms, contact_forms, photo_forms
+            relationship_forms, contact_forms, photo_forms, social_media_profile_forms
     ):
         """ Save the person form, and the corresponding inline forms.
 
@@ -1343,6 +1352,7 @@ class AbstractPersonView:
         :param relationship_forms: Inline person relationship forms to save.
         :param contact_forms: Inline person contact forms to save.
         :param photo_forms: Inline person photo forms to save.
+        :param social_media_profile_forms: Inline person social media profile forms to save
         :return: Nothing.
         """
         with transaction.atomic():
@@ -1356,6 +1366,7 @@ class AbstractPersonView:
             alias_forms.instance = self.object
             contact_forms.instance = self.object
             photo_forms.instance = self.object
+            social_media_profile_forms.instance = self.object
             # save data collected through inline forms
             identifier_forms.save()
             grouping_forms.save()
@@ -1368,6 +1379,7 @@ class AbstractPersonView:
             )
             contact_forms.save()
             photo_forms.save()
+            social_media_profile_forms.save()
 
 
 class PersonCreateView(AdminSyncCreateView, AbstractPersonView):
@@ -1408,7 +1420,8 @@ class PersonCreateView(AdminSyncCreateView, AbstractPersonView):
             relationships_dict=self._relationships_dict,
             contacts_dict=self._contacts_dict,
             photos_dict=self._photos_dict,
-            user=self.request.user
+            user=self.request.user,
+            social_media_profiles_dict=self._social_media_profiles_dict
         )
         return context
 
@@ -1427,15 +1440,17 @@ class PersonCreateView(AdminSyncCreateView, AbstractPersonView):
         relationship_forms = context[self._relationships_key]
         contact_forms = context[self._contacts_key]
         photo_forms = context[self._photos_key]
+        social_media_profile_forms = context[self._social_media_profiles_key]
         forms_are_valid = identifier_forms.is_valid() and grouping_forms.is_valid() and title_forms.is_valid() \
-            and payment_forms.is_valid() and alias_forms.is_valid() and contact_forms.is_valid() \
-            and photo_forms.is_valid()
+                          and payment_forms.is_valid() and alias_forms.is_valid() and contact_forms.is_valid() \
+                          and photo_forms.is_valid() and social_media_profile_forms.is_valid()
         if forms_are_valid:
             if self._validate_relationship_formset(relationship_forms=relationship_forms, user=self.request.user):
                 self._save_forms(
                     form=form, identifier_forms=identifier_forms, grouping_forms=grouping_forms,
                     title_forms=title_forms, payment_forms=payment_forms, alias_forms=alias_forms,
-                    relationship_forms=relationship_forms, contact_forms=contact_forms, photo_forms=photo_forms
+                    relationship_forms=relationship_forms, contact_forms=contact_forms, photo_forms=photo_forms,
+                    social_media_profile_forms=social_media_profile_forms
                 )
                 return super(PersonCreateView, self).form_valid(form)
         return self.form_invalid(form=form)
@@ -1479,7 +1494,8 @@ class PersonUpdateView(AdminSyncUpdateView, AbstractPersonView):
             relationships_dict={**self._relationships_dict},
             contacts_dict={'instance': self.object, **self._contacts_dict},
             photos_dict={'instance': self.object, **self._photos_dict},
-            user=self.request.user
+            user=self.request.user,
+            social_media_profiles_dict={'instance': self.object, **self._social_media_profiles_dict}
         )
         return context
 
@@ -1498,15 +1514,17 @@ class PersonUpdateView(AdminSyncUpdateView, AbstractPersonView):
         relationship_forms = context[self._relationships_key]
         contact_forms = context[self._contacts_key]
         photo_forms = context[self._photos_key]
+        social_media_profile_forms = context[self._social_media_profiles_key]
         forms_are_valid = identifier_forms.is_valid() and grouping_forms.is_valid() and title_forms.is_valid() \
-            and payment_forms.is_valid() and alias_forms.is_valid() and contact_forms.is_valid() \
-            and photo_forms.is_valid()
+                          and payment_forms.is_valid() and alias_forms.is_valid() and contact_forms.is_valid() \
+                          and photo_forms.is_valid() and social_media_profile_forms.is_valid()
         if forms_are_valid:
             if self._validate_relationship_formset(relationship_forms=relationship_forms, user=self.request.user):
                 self._save_forms(
                     form=form, identifier_forms=identifier_forms, grouping_forms=grouping_forms,
                     title_forms=title_forms, payment_forms=payment_forms, alias_forms=alias_forms,
-                    relationship_forms=relationship_forms, contact_forms=contact_forms, photo_forms=photo_forms
+                    relationship_forms=relationship_forms, contact_forms=contact_forms, photo_forms=photo_forms,
+                    social_media_profile_forms=social_media_profile_forms
                 )
                 return super(PersonUpdateView, self).form_valid(form)
         return self.form_invalid(form=form)
@@ -1543,6 +1561,7 @@ class AsyncGetPersonsView(AbstractAsyncGetModelView):
     """ Asynchronously retrieves persons that can be linked to a model instance.
 
     """
+
     def _get_specific_queryset(self, filter_dict):
         """ Retrieves a queryset of search results based on the search criteria entered by the user.
 
@@ -2290,7 +2309,7 @@ class ContentCreateView(AdminSyncCreateView, AbstractContentView):
         attachment_forms = context[self._attachments_key]
         incident_forms = context[self._incidents_key]
         forms_are_valid = identifier_forms.is_valid() and case_forms.is_valid() and person_forms.is_valid() \
-            and attachment_forms.is_valid() and incident_forms.is_valid()
+                          and attachment_forms.is_valid() and incident_forms.is_valid()
         if forms_are_valid:
             self._save_forms(
                 form=form,
@@ -2364,7 +2383,7 @@ class ContentUpdateView(AdminSyncUpdateView, AbstractContentView):
             attachment_forms = context[self._attachments_key]
             incident_forms = context[self._incidents_key]
             forms_are_valid = identifier_forms.is_valid() and case_forms.is_valid() and person_forms.is_valid() \
-                and attachment_forms.is_valid() and incident_forms.is_valid()
+                              and attachment_forms.is_valid() and incident_forms.is_valid()
             if forms_are_valid:
                 self._save_forms(
                     form=form,
@@ -2436,6 +2455,7 @@ class AsyncGetAttachmentsView(AbstractAsyncGetModelView):
     """ Asynchronously retrieves attachments that can be linked to a model instance.
 
     """
+
     def _get_specific_queryset(self, filter_dict):
         """ Retrieves a queryset of search results based on the search criteria entered by the user.
 
@@ -2531,6 +2551,7 @@ class AsyncGetIncidentsView(AbstractAsyncGetModelView):
     """ Asynchronously retrieves incidents that can be linked to a model instance.
 
     """
+
     def _get_specific_queryset(self, filter_dict):
         """ Retrieves a queryset of search results based on the search criteria entered by the user.
 

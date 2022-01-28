@@ -432,6 +432,8 @@ class Person(Confidentiable, Descriptable):
         qs = qs.prefetch_related(
             Prefetch('person_photos', queryset=PersonPhoto.active_objects.all(), to_attr='officer_photos'),
             Prefetch('person_aliases', queryset=PersonAlias.active_objects.all(), to_attr='officer_aliases'),
+            Prefetch('person_social_media_profiles', queryset=PersonSocialMediaProfile.active_objects.all(),
+                     to_attr='officer_social_media_profiles'),
             Prefetch(
                 'person_identifiers',
                 queryset=PersonIdentifier.active_objects.filter(
@@ -895,6 +897,62 @@ class PersonAlias(Archivable, AbstractAlias):
         verbose_name_plural = _('Person aliases')
         unique_together = ('person', 'name')
         ordering = ['person', 'name']
+
+
+class PersonSocialMediaProfile(Archivable):
+    """ Social media related to a person, e.g. links and names used in the social media
+    """
+
+    link = models.URLField(
+        null=False,
+        blank=False,
+        default='',
+        help_text='URL to social media profile/feed owned by this person',
+        max_length=2048,
+        verbose_name="social media profile/feed URL"
+    )
+    link_name = models.CharField(
+        null=False,
+        blank=False,
+        default='',
+        help_text='Named used in this social media profile related to this person',
+        max_length=300,
+        verbose_name='social media profile name/handel'
+    )
+    person = models.ForeignKey(
+        Person,
+        on_delete=models.CASCADE,
+        related_name='person_social_media_profiles',
+        related_query_name='person_social_media_profile',
+        blank=False,
+        null=False,
+        help_text='Person who is known to own this social media profile',
+        verbose_name='person'
+    )
+
+    #: Fields to display in the model form.
+    form_fields = ['link_name', 'link', 'person']
+
+    def __str__(self):
+        """Defines string representation for a person social media.
+
+        :return: String representation of a social media.
+        """
+        person_name = AbstractForeignKeyValidator.stringify_foreign_key(obj=self, foreign_key='person')
+        #convert to fstring
+        return f"{self.link_name}, {self.link} person fk:{person_name}"
+
+    @classmethod
+    def filter_for_admin(cls, queryset, user):
+        return queryset
+
+    """ meta class is to add additional settings about the object model
+    """
+    class Meta:
+        db_table = '{d}person_social_media_profile'.format(d=settings.DB_PREFIX)
+        verbose_name = 'Person social media profile'
+        verbose_name_plural = 'Person social media profiles'
+        ordering = ['person', 'link_name', 'link']
 
 
 class PersonPhoto(Archivable, Descriptable):

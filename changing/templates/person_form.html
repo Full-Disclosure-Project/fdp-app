@@ -224,6 +224,24 @@
             </div>
         </div> <!-- div.collapsible for Relationships -->
 
+        <button type="button" class="collapsible expanded">{% translate 'Social Media Profiles' %}</button>
+        <div class="collapsible">
+            <div>
+                {{ person_social_media_profiles_model_formset.management_form }}
+            </div>
+            {% for nested_form in person_social_media_profiles_model_formset %}
+            <div class="person-social-media-profile-form">
+                {% include "inline_wizard_form.html" with form=nested_form del_icon_class="del-social-media-profile" has_delete=True parent_counter=forloop.counter0 is_empty_form=False %}
+            </div> <!-- div.person-social-media-profile -->
+            {% endfor %}
+            <div id="empty-person-social-media-profile" class="person-social-media-profile-form emptyform">
+                {% include "inline_wizard_form.html" with form=person_social_media_profiles_model_formset.empty_form del_icon_class="del-social-media-profile" has_delete=True parent_counter=forloop.counter0 is_empty_form=True %}
+            </div> <!-- div#empty-person-social-media-profile -->
+            <div>
+                <span id="new-person-social-media-profile" class="clickable"><i class="fas fa-plus-circle"></i> {% translate 'Add another social media profile' %}</span>
+            </div>
+        </div> <!-- div.collapsible for Social Media Profiles -->
+
         <input type="submit" value="Save">
 
         <div class="hidden">

@@ -108,8 +108,23 @@
                     <span class="labelsim">{{ title.title.name }}</span>
                     {% if title.as_of_bounding_dates %}{{ title.as_of_bounding_dates }}{% endif %}
                 </div>
+
                 {% endfor %}
                 {% endif %}
+                {%if object.officer_social_media_profiles%}
+                <div>
+                    <label class="ident">{% translate 'Social Media Profiles' %}</label>
+                    <ul>
+                        {% for social_media_profile in object.officer_social_media_profiles%}
+                            <li>
+                                <span class="identval labelsim">{{ social_media_profile.link_name}}:</span>
+                                <a href="{{social_media_profile.link}}">{{social_media_profile.link}}</a>
+                            </li>
+                        {% if not forloop.last %}
+                        {% endif %} {% endfor %}
+                    </ul>
+                </div>
+                {%endif%}
 
             </div> <!-- div.gridcol.gridcell_1_of_3 -->
             <div class="gridcol gridcell_1_of_3">

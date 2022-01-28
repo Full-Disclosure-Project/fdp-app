@@ -1,10 +1,10 @@
 /* container for inline forms */
 div.identifierform, div.persongroupingform, div.persontitleform, div.personpaymentform, div.personaliasform,
-div.personrelationshipform, div.personcontactform, div.personphotoform  {
+div.personrelationshipform, div.personcontactform, div.personphotoform, div.person-social-media-profile-form  {
     border-left: 4px solid #79aec8;
 }
 /* icon to delete inline forms */
-.delidentifier, .delgrouping, .deltitle, .delpayment, .delalias, .delrelationship, .delcontact, .delphoto {
+.delidentifier, .delgrouping, .deltitle, .delpayment, .delalias, .delrelationship, .delcontact, .delphoto, .del-social-media-profile {
     font-size: 150%;
     color: #ba2121;
     margin-bottom: 1em;

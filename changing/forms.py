@@ -12,7 +12,7 @@ from sourcing.models import ContentIdentifier, ContentCase, Content, ContentPers
     ContentPersonAllegation, ContentPersonPenalty
 from core.models import Grouping, GroupingAlias, GroupingRelationship, Person, PersonAlias, PersonIdentifier, \
     PersonGrouping, PersonTitle, PersonRelationship, PersonContact, PersonPayment, Incident, PersonIncident, \
-    GroupingIncident, PersonPhoto
+    GroupingIncident, PersonPhoto, PersonSocialMediaProfile
 from supporting.models import County, GroupingRelationshipType, PersonRelationshipType, Location
 
 
@@ -698,6 +698,27 @@ class PersonPaymentModelForm(AbstractWizardModelForm):
         fields_order = person_payment_form_fields.copy()
 
 
+class PersonSocialMediaProfileModelForm(AbstractWizardModelForm):
+    """ Form used to create new and edit existing instances of person's social media model.
+    Fields:
+    """
+    #: Fields to show in the form
+    fields_to_show = PersonSocialMediaProfile.form_fields
+
+    #: Prefix to use for form
+    prefix = 'social-media-profile'
+
+    formset_extra = 0
+
+    #: Can delete (forms) parameter when creating a person social media
+    formset_can_delete = True
+
+    class Meta:
+        model = PersonSocialMediaProfile
+        fields = PersonSocialMediaProfile.form_fields
+        fields_order = PersonSocialMediaProfile.form_fields
+
+
 class PersonAliasModelForm(AbstractWizardModelForm):
     """ Form used to create new and edit existing instances of person alias model.
 
@@ -1046,6 +1067,15 @@ PersonAliasModelFormSet = forms.inlineformset_factory(
     can_order=PersonAliasModelForm.formset_can_order,
 )
 
+#: Form connecting the person socialmedia to person
+PersonSocialMediaProfileModelFormSet = forms.inlineformset_factory(
+    Person,
+    PersonSocialMediaProfile,
+    form=PersonSocialMediaProfileModelForm,
+    formset=AbstractWizardInlineFormSet,
+    extra=PersonSocialMediaProfileModelForm.formset_extra,
+    can_delete=PersonSocialMediaProfileModelForm.formset_can_delete,
+)
 
 #: Form connecting the person relationship to person
 PersonRelationshipModelFormSet = forms.modelformset_factory(
